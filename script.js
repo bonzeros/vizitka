@@ -86,9 +86,13 @@ async function loadVideos() {
     videos = DEFAULT_VIDEOS;
   } finally {
     currentIndex = 0;
-    renderVideos(videos);      // рисуем ленту
-    buildCarousel();           // строим карусель один раз
-    updateCarousel();          // ставим в нужную позицию
+    renderVideos(videos);
+    buildCarousel();
+    updateCarousel();
+    // Повторное центрирование после загрузки превью (важно для мобильных!)
+    setTimeout(updateCarousel, 100);
+    setTimeout(updateCarousel, 300);
+    setTimeout(updateCarousel, 700);
     startAutoplay();
     showGridLoader(false);
   }
@@ -154,6 +158,13 @@ function buildCarousel() {
       <div class="card-title">${escapeHtml(video.title)}</div>
     `;
 
+    // 🔧 Пересчёт позиции после загрузки картинки (фикс смещения)
+    const img = card.querySelector('img');
+    if (img) {
+      img.addEventListener('load', updateCarousel);
+      img.addEventListener('error', updateCarousel);
+    }
+
     card.addEventListener('click', () => {
       if (idx === currentIndex) {
         openModal(video);
@@ -168,30 +179,32 @@ function buildCarousel() {
   });
 }
 
-function getCardTotal() {
-  const card = carouselTrack.querySelector('.carousel-card');
-  if (!card) return 284;
-  const style = getComputedStyle(card);
-  const width = card.offsetWidth;
-  const margin = parseFloat(style.marginLeft) + parseFloat(style.marginRight);
-  return width + margin;
-}
-
 function updateCarousel() {
   if (!carouselTrack || !carouselEl) return;
 
   const cards = carouselTrack.querySelectorAll('.carousel-card');
+  if (!cards.length) return;
+
   cards.forEach((card, idx) => {
     card.classList.toggle('active', idx === currentIndex);
   });
 
-  const cardTotal = getCardTotal();
-  const carouselCenter = carouselEl.offsetWidth / 2;
-  const offset = carouselCenter - (currentIndex * cardTotal + cardTotal / 2);
+  const activeCard = cards[currentIndex];
+  if (!activeCard) return;
+
+  const wrapper = carouselTrack.parentElement;
+
+  if (activeCard.offsetWidth === 0 || wrapper.offsetWidth === 0) {
+    requestAnimationFrame(updateCarousel);
+    return;
+  }
+
+  const wrapperCenter = wrapper.clientWidth / 2;
+  const cardCenter = activeCard.offsetLeft + activeCard.offsetWidth / 2;
+  const offset = wrapperCenter - cardCenter;
 
   carouselTrack.style.transform = `translateX(${offset}px)`;
 }
-
 function nextSlide() {
   if (videos.length === 0) return;
   currentIndex = (currentIndex + 1) % videos.length;
@@ -204,29 +217,41 @@ function prevSlide() {
   updateCarousel();
 }
 
-if (nextBtn) nextBtn.addEventListener('click', () => {
-  nextSlide();
-  startAutoplay();
-});
-if (prevBtn) prevBtn.addEventListener('click', () => {
-  prevSlide();
-  startAutoplay();
-});
+if (nextBtn) nextBtn.addEventListener('click', () => { nextSlide(); startAutoplay(); });
+if (prevBtn) prevBtn.addEventListener('click', () => { prevSlide(); startAutoplay(); });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight') {
-    nextSlide();
-    startAutoplay();
-  }
-  if (e.key === 'ArrowLeft') {
-    prevSlide();
-    startAutoplay();
-  }
+  if (e.key === 'ArrowRight') { nextSlide(); startAutoplay(); }
+  if (e.key === 'ArrowLeft')  { prevSlide(); startAutoplay(); }
 });
 
+// Пересчёт позиции при ресайзе (с защитой от частых вызовов)
+let resizeTimer;
 window.addEventListener('resize', () => {
-  updateCarousel();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(updateCarousel, 150);
 });
+
+/* ===== СВАЙПЫ НА ТЕЛЕФОНЕ ===== */
+let touchStartX = 0;
+let touchEndX = 0;
+
+if (carouselEl) {
+  carouselEl.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    stopAutoplay();
+  }, { passive: true });
+
+  carouselEl.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > 40) {     // порог свайпа
+      if (diff > 0) nextSlide();
+      else prevSlide();
+    }
+    setTimeout(startAutoplay, 3000);
+  }, { passive: true });
+}
 
 // ===== АВТОПРОКРУТКА =====
 function startAutoplay() {
@@ -246,10 +271,6 @@ function stopAutoplay() {
 if (carouselEl) {
   carouselEl.addEventListener('mouseenter', stopAutoplay);
   carouselEl.addEventListener('mouseleave', startAutoplay);
-  carouselEl.addEventListener('touchstart', stopAutoplay, { passive: true });
-  carouselEl.addEventListener('touchend', () => {
-    setTimeout(startAutoplay, 3000);
-  });
 }
 
 /* Получить превью видео */
@@ -312,11 +333,7 @@ function openModal(video) {
   iframe.addEventListener('load', () => { videoLoader.style.display = 'none'; });
 
   modalIframeWrap.appendChild(iframe);
-  
-  // Когда iframe загрузился — прячем лоадер
-  iframe.addEventListener('load', () => { videoLoader.style.display = 'none'; });
 
-  modalIframeWrap.appendChild(iframe);
 
   // Открываем модалку
   modal.classList.add('open');
