@@ -34,9 +34,20 @@ const DEFAULT_VIDEOS = [
   }
 ];
 
+// ---------- VK-ЗАГЛУШКА (логотип VK) ----------
+const VK_PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">' +
+  '<rect width="100%" height="100%" fill="#0077FF"/>' +
+  '<text x="50%" y="50%" font-family="Arial, sans-serif" font-size="120" ' +
+  'font-weight="bold" fill="#ffffff" text-anchor="middle" dominant-baseline="central">VK</text>' +
+  '</svg>'
+);
+
 /* ---------- DOM-ЭЛЕМЕНТЫ ---------- */
 const videoGrid     = document.getElementById('videoGrid');
-const headerCircles = document.getElementById('headerCircles');
+const carouselTrack = document.getElementById('carouselTrack');
+const prevBtn       = document.getElementById('prevBtn');
+const nextBtn       = document.getElementById('nextBtn');
 const gridLoader    = document.getElementById('gridLoader');
 const refreshBtn    = document.getElementById('refreshBtn');
 const modal         = document.getElementById('modal');
@@ -46,6 +57,12 @@ const modalIframeWrap = document.getElementById('modalIframeWrap');
 const modalTitle    = document.getElementById('modalTitle');
 const modalDesc     = document.getElementById('modalDesc');
 const videoLoader   = document.getElementById('videoLoader');
+const carouselEl    = document.querySelector('.carousel');
+
+let videos = [];
+let currentIndex = 0;
+let autoplayInterval = null;
+const AUTOPLAY_DELAY = 4000; // 4 секунды между слайдами
 
 /* =========================================================
    1. ЗАГРУЗКА ДАННЫХ ИЗ videos.json
@@ -54,7 +71,6 @@ async function loadVideos() {
   showGridLoader(true);
   videoGrid.innerHTML = '';
 
-  let videos;
   try {
     // Добавляем метку времени, чтобы избежать кеширования при обновлении
     const response = await fetch('videos.json?_=' + Date.now());
@@ -69,8 +85,11 @@ async function loadVideos() {
     console.warn('Не удалось загрузить videos.json:', err.message, '— показываю дефолтные примеры.');
     videos = DEFAULT_VIDEOS;
   } finally {
-    renderVideos(videos);          // рисуем ленту
-    renderHeaderCircles(videos);   // рисуем кружки в хедере
+    currentIndex = 0;
+    renderVideos(videos);      // рисуем ленту
+    buildCarousel();           // строим карусель один раз
+    updateCarousel();          // ставим в нужную позицию
+    startAutoplay();
     showGridLoader(false);
   }
 }
@@ -120,49 +139,126 @@ function renderVideos(videos) {
 }
 
 /* =========================================================
-   КРУЖКИ-ПРЕВЬЮ ВИДЕО В ХЕДЕРЕ
+   КАРУСЕЛЬ-СПИСОК ВИДЕО В ХЕДЕРЕ
    ========================================================= */
-function renderHeaderCircles(videos) {
-  if (!headerCircles) return;
-  headerCircles.innerHTML = '';
+function buildCarousel() {
+  if (!carouselTrack) return;
+  carouselTrack.innerHTML = '';
 
-  if (!Array.isArray(videos) || videos.length === 0) return;
+  videos.forEach((video, idx) => {
+    const card = document.createElement('div');
+    card.className = 'carousel-card';
+    card.dataset.index = idx;
+    card.innerHTML = `
+      <img src="${getThumbnail(video)}" alt="${escapeHtml(video.title)}" loading="lazy" onerror="this.style.display='none'">
+      <div class="card-title">${escapeHtml(video.title)}</div>
+    `;
 
-  const MAX = 4; // сколько кружков показать в хедере
-  const shown = videos.slice(0, MAX);
+    card.addEventListener('click', () => {
+      if (idx === currentIndex) {
+        openModal(video);
+      } else {
+        currentIndex = idx;
+        updateCarousel();
+        startAutoplay();
+      }
+    });
 
-  shown.forEach((video, index) => {
-    const circle = document.createElement('div');
-    circle.className = 'header-circle';
-    circle.style.animationDelay = (index * 0.12) + 's'; // stagger
-    circle.title = video.title || '';
+    carouselTrack.appendChild(card);
+  });
+}
 
-    const thumb = getThumbnail(video);
-    circle.innerHTML = `<img src="${thumb}" alt="${escapeHtml(video.title)}" loading="lazy" onerror="this.style.display='none'">`;
+function getCardTotal() {
+  const card = carouselTrack.querySelector('.carousel-card');
+  if (!card) return 284;
+  const style = getComputedStyle(card);
+  const width = card.offsetWidth;
+  const margin = parseFloat(style.marginLeft) + parseFloat(style.marginRight);
+  return width + margin;
+}
 
-    // Клик по кружку — открыть модалку с этим видео
-    circle.addEventListener('click', (e) => { e.stopPropagation(); openModal(video); });
+function updateCarousel() {
+  if (!carouselTrack || !carouselEl) return;
 
-    headerCircles.appendChild(circle);
+  const cards = carouselTrack.querySelectorAll('.carousel-card');
+  cards.forEach((card, idx) => {
+    card.classList.toggle('active', idx === currentIndex);
   });
 
-  // Если работ больше — добавляем кружок "+N", который скроллит к портфолио
-  if (videos.length > MAX) {
-    const more = document.createElement('div');
-    more.className = 'header-circle header-circle--more';
-    more.style.animationDelay = (MAX * 0.12) + 's';
-    more.textContent = '+' + (videos.length - MAX);
-    more.title = 'Смотреть все работы';
-    more.addEventListener('click', (e) => {
-      e.stopPropagation();
-      document.getElementById('portfolio').scrollIntoView({ behavior: 'smooth' });
-    });
-    headerCircles.appendChild(more);
+  const cardTotal = getCardTotal();
+  const carouselCenter = carouselEl.offsetWidth / 2;
+  const offset = carouselCenter - (currentIndex * cardTotal + cardTotal / 2);
+
+  carouselTrack.style.transform = `translateX(${offset}px)`;
+}
+
+function nextSlide() {
+  if (videos.length === 0) return;
+  currentIndex = (currentIndex + 1) % videos.length;
+  updateCarousel();
+}
+
+function prevSlide() {
+  if (videos.length === 0) return;
+  currentIndex = (currentIndex - 1 + videos.length) % videos.length;
+  updateCarousel();
+}
+
+if (nextBtn) nextBtn.addEventListener('click', () => {
+  nextSlide();
+  startAutoplay();
+});
+if (prevBtn) prevBtn.addEventListener('click', () => {
+  prevSlide();
+  startAutoplay();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') {
+    nextSlide();
+    startAutoplay();
   }
+  if (e.key === 'ArrowLeft') {
+    prevSlide();
+    startAutoplay();
+  }
+});
+
+window.addEventListener('resize', () => {
+  updateCarousel();
+});
+
+// ===== АВТОПРОКРУТКА =====
+function startAutoplay() {
+  stopAutoplay();
+  autoplayInterval = setInterval(() => {
+    nextSlide();
+  }, AUTOPLAY_DELAY);
+}
+
+function stopAutoplay() {
+  if (autoplayInterval) {
+    clearInterval(autoplayInterval);
+    autoplayInterval = null;
+  }
+}
+
+if (carouselEl) {
+  carouselEl.addEventListener('mouseenter', stopAutoplay);
+  carouselEl.addEventListener('mouseleave', startAutoplay);
+  carouselEl.addEventListener('touchstart', stopAutoplay, { passive: true });
+  carouselEl.addEventListener('touchend', () => {
+    setTimeout(startAutoplay, 3000);
+  });
 }
 
 /* Получить превью видео */
 function getThumbnail(video) {
+  // 🔵 VK — ВСЕГДА логотип VK (обложек у VK нет)
+  if (video.platform === 'vk') {
+    return VK_PLACEHOLDER;
+  }
+
   // Если задан явный thumbnail — используем его
   if (video.thumbnail && video.thumbnail.trim() !== '') return video.thumbnail;
 
@@ -172,7 +268,7 @@ function getThumbnail(video) {
     if (id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
   }
 
-  // Vimeo и прочее — заглушка (тёмный фон карточки)
+  // Vimeo и прочее — тёмная заглушка
   return 'data:image/svg+xml;charset=utf-8,' +
     encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#111"/></svg>');
 }
@@ -187,6 +283,8 @@ function extractYouTubeId(url) {
    3. МОДАЛЬНОЕ ОКНО
    ========================================================= */
 function openModal(video) {
+  stopAutoplay();
+
   // Заголовок и описание
   modalTitle.textContent = video.title;
   modalDesc.textContent = video.description;
@@ -198,12 +296,23 @@ function openModal(video) {
   // Формируем итоговый URL с нужными параметрами
   const src = buildEmbedUrl(video);
 
-  // Создаём iframe с защитой sandbox
+  // Создаём iframe
   const iframe = document.createElement('iframe');
   iframe.src = src;
-  iframe.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
   iframe.setAttribute('allowfullscreen', '');
-  iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-popups allow-forms allow-presentation');
+  iframe.frameBorder = '0';
+
+  // sandbox НЕ ставим для YouTube и VK — они в нём не работают
+  if (video.platform !== 'vk' && video.platform !== 'youtube') {
+    iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-popups allow-forms allow-presentation');
+  }
+
+  // Когда iframe загрузился — прячем лоадер
+  iframe.addEventListener('load', () => { videoLoader.style.display = 'none'; });
+
+  modalIframeWrap.appendChild(iframe);
+  
   // Когда iframe загрузился — прячем лоадер
   iframe.addEventListener('load', () => { videoLoader.style.display = 'none'; });
 
@@ -218,15 +327,18 @@ function openModal(video) {
 /* Сборка URL с параметрами под платформу */
 function buildEmbedUrl(video) {
   let url = video.url;
+  // Разделитель: если в ссылке уже есть "?" — добавляем "&", иначе "?"
+  const sep = url.includes('?') ? '&' : '?';
 
   if (video.platform === 'youtube') {
     // YouTube: убираем рекламу, без автовоспроизведения
-    url += (url.includes('?') ? '&' : '?') +
-      'rel=0&modestbranding=1&controls=1&showinfo=0&autoplay=0';
+    url += sep + 'rel=0&modestbranding=1&controls=1&showinfo=0&autoplay=0';
   } else if (video.platform === 'vimeo') {
     // Vimeo: приватность, без лишней информации
-    url += (url.includes('?') ? '&' : '?') +
-      'dnt=1&title=0&byline=0&portrait=0&autoplay=0';
+    url += sep + 'dnt=1&title=0&byline=0&portrait=0&autoplay=0';
+  } else if (video.platform === 'vk') {
+    // VK: без автозапуска (hd=2 — качество по умолчанию)
+    url += sep + 'hd=2&autoplay=0';
   }
 
   return url;
@@ -238,6 +350,7 @@ function closeModal() {
   modal.setAttribute('aria-hidden', 'true');
   modalIframeWrap.innerHTML = ''; // удаляем iframe -> останавливаем видео
   document.body.style.overflow = ''; // возвращаем прокрутку
+  startAutoplay();
 }
 
 /* Закрытие: крестик, фон, ESC */
@@ -280,8 +393,8 @@ function escapeHtml(str) {
    ========================================================= */
 function setupContacts() {
   // ⚙️ ИЗМЕНИ ЗДЕСЬ свои контакты:
-  const tgUser = 'alex_volkov';            // ник в Telegram без @
-  const mailUser = 'alex.volkov';          // часть до @
+  const tgUser = 'betaraw';            // ник в Telegram без @
+  const mailUser = 'bz.jura';          // часть до @
   const mailDomain = 'gmail.com';          // домен
 
   const tgBtn = document.getElementById('tgBtn');

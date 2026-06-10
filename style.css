@@ -22,11 +22,9 @@
 }
 
 /* Запрет выделения текста на всей странице (кроме .selectable) */
-body {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  user-select: none;
-}
+
+ 
+
 .selectable {
   -webkit-user-select: text;
   -moz-user-select: text;
@@ -124,80 +122,107 @@ a { text-decoration: none; color: inherit; }
   max-width: 700px;
   animation: fadeUp 0.9s ease;
 }
-.header__circles {
+.carousel {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
+  justify-content: center;
+  position: relative;
+  max-width: 1000px;
+  margin: 0 auto;
+  overflow: hidden;
+  padding: 30px 0;
 }
 
-/* Один кружок-превью */
-.header-circle {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  padding: 3px; /* толщина градиентного кольца */
-  background: var(--gradient);
+.carousel .carousel-track-wrapper {
+  overflow: hidden;
+  width: 100%;
+}
+
+.carousel-track {
+  display: flex;
+  align-items: center;
+  transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+}
+
+.carousel-card {
+  flex: 0 0 auto;
+  width: 260px;
+  height: 160px;
+  margin: 0 12px;
+  border-radius: 14px;
+  overflow: hidden;
   cursor: pointer;
   position: relative;
-  flex-shrink: 0;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  opacity: 0;
-  transform: scale(0.5);
-  animation: circleIn 0.5s ease forwards;
+  transition: transform 0.5s ease, filter 0.5s ease, opacity 0.5s ease;
+  transform: scale(0.85);
+  filter: brightness(0.5);
+  opacity: 0.7;
 }
-.header-circle:hover {
-  transform: scale(1.12) translateY(-4px);
-  box-shadow: 0 0 24px rgba(108, 99, 255, 0.7);
-}
-.header-circle img {
+
+.carousel-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 50%;
-  border: 3px solid var(--bg);
   display: block;
 }
-/* Иконка play поверх кружка */
-.header-circle::after {
-  content: '\f04b'; /* play (FontAwesome) */
-  font-family: 'Font Awesome 6 Free';
-  font-weight: 900;
+
+.carousel-card .card-title {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 10px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.8));
   color: #fff;
-  font-size: 0.8rem;
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 50%;
-  margin: 3px;
+  font-size: 14px;
+  text-align: left;
   opacity: 0;
-  transition: opacity 0.3s ease;
-}
-.header-circle:hover::after { opacity: 1; }
+  transition: opacity 0.4s ease;
 
-/* "+N" — счётчик остальных работ */
-.header-circle--more {
-  background: var(--card);
-  border: 2px solid var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent2);
-  font-weight: 700;
-  font-size: 0.95rem;
-  padding: 0;
+  /* 👇 Обрезаем в одну строку с многоточием */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.header-circle--more::after { display: none; }
-.header-circle--more img { display: none; }
 
-/* Анимация появления кружков */
-@keyframes circleIn {
-  to { opacity: 1; transform: scale(1); }
+.carousel-card.active {
+  transform: scale(1.1);
+  filter: brightness(1);
+  opacity: 1;
+  z-index: 2;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.carousel-card.active .card-title {
+  opacity: 1;
+}
+
+.carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  font-size: 32px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.3s;
+  z-index: 5;
+}
+.carousel-btn:hover { background: rgba(0,0,0,0.9); }
+.carousel-btn--prev { left: 10px; }
+.carousel-btn--next { right: 10px; }
+
+.carousel-btn:hover {
+  background: rgba(20, 20, 20, 0.95);
+  transform: scale(1.03);
+}
+
+.carousel-btn i {
+  font-size: 1rem;
 }
 .header__title {
   font-size: clamp(2.5rem, 7vw, 5rem);
@@ -593,6 +618,20 @@ section { padding: 90px 0; }
 }
 
 /* Мобильные: 1 колонка (<768px) */
+@media (max-width: 1024px) {
+  .carousel {
+    max-width: 90%;
+  }
+  .carousel-card {
+    width: 200px;
+    height: 125px;
+  }
+  .carousel-card.active {
+    width: 280px;
+    height: 175px;
+  }
+}
+
 @media (max-width: 768px) {
   section { padding: 60px 0; }
   .video-grid { grid-template-columns: 1fr; gap: 22px; }
@@ -601,7 +640,30 @@ section { padding: 90px 0; }
   .header__cta .btn { width: 100%; max-width: 280px; justify-content: center; }
   .portfolio__head { flex-direction: column; align-items: flex-start; }
   .footer__inner { flex-direction: column; text-align: center; }
-  .header-circle { width: 52px; height: 52px; }
+  .carousel {
+    gap: 8px;
+  }
+  .carousel-track {
+    gap: 10px;
+  }
+  .carousel-card {
+    width: 110px;
+    height: 70px;
+    border-radius: 10px;
+  }
+  .carousel-card.active {
+    width: 190px;
+    height: 115px;
+  }
+  .carousel-card .card-title {
+    font-size: 11px;
+    padding: 6px;
+  }
+  .carousel-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 26px;
+  }
 
   /* Модалка на мобильных — 95% ширины с отступами */
   .modal { padding: 16px; }
@@ -614,9 +676,54 @@ section { padding: 90px 0; }
   }
 }
 
+@media (max-width: 480px) {
+  .carousel {
+    gap: 0;
+  }
+  .carousel-track {
+    gap: 0;
+  }
+  .carousel-card:not(.active) {
+    display: none;
+  }
+  .carousel-card.active {
+    width: 85vw;
+    height: 48vw;
+    transform: scale(1);
+  }
+  .carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38px;
+    height: 38px;
+    font-size: 24px;
+    background: rgba(0, 0, 0, 0.7);
+  }
+  .carousel-btn--prev {
+    left: 5px;
+  }
+  .carousel-btn--next {
+    right: 5px;
+  }
+  .modal__dialog {
+    width: 95%;
+    max-width: none;
+  }
+}
+
 /* Очень узкие экраны */
 @media (max-width: 420px) {
   .container { padding: 0 16px; }
   .contacts__buttons { flex-direction: column; }
   .contact-btn { justify-content: center; }
+}
+/* Скрыть стрелочки карусели */
+.carousel-arrow,
+
+.carousel-btn--prev,
+.carousel-btn--next,
+.prev-btn,
+.next-btn {
+  display: none !important;
 }
